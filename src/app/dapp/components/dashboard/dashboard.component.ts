@@ -5,6 +5,7 @@ import { WalletService, Network } from '../../services/wallet.service';
 import { AsyncPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subscription } from 'rxjs';
+import { TransactionContractService } from '../../services/transaction-contract.service';
 
 export interface Contact {
   id: string;
@@ -35,7 +36,7 @@ export interface Transaction {
 })
 export class DashboardComponent implements OnInit, OnDestroy {
   private subscriptions: Subscription[] = [];
-  
+  sendMethod: 'direct' | 'contract' = 'direct';
   isDropdownOpen = false;
   isNetworkDropdownOpen = false;
   isAddContactModalOpen = false;
@@ -180,7 +181,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   constructor(
     public walletService: WalletService,
-    private router: Router
+    private router: Router,
+    private contractService: TransactionContractService
   ) {}
 
   ngOnInit() {
@@ -249,46 +251,56 @@ export class DashboardComponent implements OnInit, OnDestroy {
   async sendTransaction() {
   if (this.sendData.recipient && this.sendData.amount) {
     try {
-      console.log('Sending', this.sendData.amount, 'ETH to', this.sendData.recipient);
+      console.log(`Método de envío: ${this.sendMethod}`);
       
-      const txHash = await this.walletService.sendTransaction(
-        this.sendData.recipient,
-        this.sendData.amount,
-        this.sendData.gasPrice
-      );
+      let txHash: string;
 
-      // ⚠️ CORREGIDO: Crear transacción con estado 'pending' inicial
+      if (this.sendMethod === 'direct') {
+        // Enviar directamente con MetaMask
+        txHash = await this.walletService.sendTransaction(
+          this.sendData.recipient,
+          this.sendData.amount,
+          this.sendData.gasPrice
+        );
+      } else {
+        // Enviar usando el contrato
+        const receipt = await this.contractService.sendTransaction(
+          this.sendData.recipient,
+          this.sendData.amount.toString()
+        );
+
+        if (!receipt) {
+          throw new Error('No se pudo enviar la transacción con el contrato');
+        }
+
+        txHash = receipt.hash;
+      }
+
+      // Crear transacción y monitorear como antes
       const newTransaction: Transaction = {
         hash: txHash,
         direction: 'outgoing',
         address: this.sendData.recipient,
         amount: this.sendData.amount,
         date: new Date(),
-        status: 'pending', // Siempre empieza como pending
+        status: 'pending',
         network: this.currentNetwork.name,
         gasPrice: this.getGasPriceValue(this.sendData.gasPrice)
       };
 
       this.transactions.unshift(newTransaction);
       this.saveTransactionsToStorage();
-
-      // ⚠️ MEJORADO: Verificar estado real de la transacción
       this.monitorTransactionStatus(txHash);
 
-      // Reset form
-      this.sendData = {
-        recipient: '',
-        amount: null,
-        gasPrice: 'standard'
-      };
-
-      alert('Transacción enviada exitosamente! Se actualizará el estado automáticamente.');
+      this.sendData = { recipient: '', amount: null, gasPrice: 'standard' };
+      alert('Transacción enviada exitosamente.');
     } catch (error) {
-      console.error('Error sending transaction:', error);
-      alert('Error al enviar la transacción. Verifica los datos e intenta nuevamente.');
+      console.error('Error al enviar:', error);
+      alert('Error al enviar la transacción.');
     }
   }
 }
+
 // ⚠️ NUEVO: Función mejorada para monitorear transacciones
 private async monitorTransactionStatus(txHash: string) {
   const maxAttempts = 20; // Máximo 20 intentos (10 minutos)

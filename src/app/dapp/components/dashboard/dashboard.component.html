@@ -119,6 +119,12 @@
             <option value="fast">Rápido (30 gwei)</option>
           </select>
         </div>
+        <label for="sendMethod">Método de envío:</label>
+<select [(ngModel)]="sendMethod" name="sendMethod" id="sendMethod">
+  <option value="direct">Directo (MetaMask)</option>
+  <option value="contract">Por contrato</option>
+</select>
+
 
         <button type="submit" class="btn btn-primary send-btn" [disabled]="!sendData.recipient || !sendData.amount">
           <span class="btn-icon">🚀</span>
